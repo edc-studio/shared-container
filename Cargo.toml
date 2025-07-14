@@ -1,0 +1,11 @@
+[package]
+name = "shared-container"
+version = "0.1.0"
+edition = "2024"
+description = "A unified abstraction for shared data access in both multi-threaded and single-threaded environments"
+license = "MIT"
+repository = "https://github.com/edc-studio/shared-container"
+keywords = ["container", "shared", "wasm", "thread-safe"]
+categories = ["concurrency", "rust-patterns", "wasm"]
+
+[dependencies]
