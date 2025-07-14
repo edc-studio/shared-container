@@ -1,6 +1,6 @@
 [package]
 name = "shared-container"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "A unified abstraction for shared data access in both multi-threaded and single-threaded environments"
 license = "MIT"
@@ -9,7 +9,19 @@ keywords = ["container", "shared", "wasm", "thread-safe"]
 categories = ["concurrency", "rust-patterns", "wasm"]
 
 [dependencies]
+tokio = { version = "1", features = ["sync"], optional = true }
 
 [features]
-# Feature to force using the wasm implementation even on non-wasm platforms (for testing)
-force-wasm-impl = []
+# Default features
+default = ["std-sync"]
+
+# Container implementation selection
+std-sync = []
+tokio-sync = ["tokio"]
+wasm-sync = []
+
+# Legacy feature for backward compatibility
+force-wasm-impl = ["wasm-sync"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
