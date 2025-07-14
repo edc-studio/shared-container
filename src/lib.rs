@@ -3,67 +3,118 @@
 //! This module provides a unified abstraction over different container types
 //! used for shared data access with interior mutability in different contexts.
 //!
-//! It abstracts over the differences between thread-safe `Arc<RwLock<T>>` used in
-//! multi-threaded environments and `Rc<RefCell<T>>` used in single-threaded
-//! environments like WebAssembly.
+//! It abstracts over the differences between:
+//! - `Arc<std::sync::RwLock<T>>` (used in standard multi-threaded environments)
+//! - `Arc<tokio::sync::RwLock<T>>` (used for async/await support)
+//! - `Rc<RefCell<T>>` (used in single-threaded environments like WebAssembly)
 //!
 //! This allows code using these containers to be written once but work efficiently
-//! in both contexts.
+//! in different contexts.
+//!
+//! ## Feature Flags
+//!
+//! This library provides several feature flags to customize its behavior:
+//!
+//! - **std-sync** (default): Uses `Arc<std::sync::RwLock<T>>` for thread-safe access
+//! - **tokio-sync**: Uses `Arc<tokio::sync::RwLock<T>>` for async/await support
+//! - **wasm-sync**: Uses `Rc<RefCell<T>>` for single-threaded environments
+//! - **force-wasm-impl**: Legacy feature, equivalent to wasm-sync
+//!
+//! ## Async Support
+//!
+//! When the `tokio-sync` feature is enabled, the library provides async versions of the read and write methods:
+//!
+//! ```rust
+//! # #[cfg(feature = "tokio-sync")]
+//! # async fn example() {
+//! # use shared_container::SharedContainer;
+//! let container = SharedContainer::new(42);
+//!
+//! // Read access
+//! let guard = container.read_async().await;
+//! println!("Value: {}", *guard);
+//!
+//! // Write access
+//! let mut guard = container.write_async().await;
+//! *guard = 100;
+//! # }
+//! ```
+//!
+//! Note that when using the `tokio-sync` feature, the synchronous `read()` and `write()` methods
+//! will always return `None`. You should use the async methods instead.
 
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-// Native platforms use thread-safe types
-#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
+// Standard library synchronization primitives (default)
+#[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+use std::sync::{Arc, RwLock, Weak};
 
-// WebAssembly uses single-threaded types
-#[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+// Tokio async synchronization primitives
+#[cfg(feature = "tokio-sync")]
+use std::sync::{Arc, Weak};
+#[cfg(feature = "tokio-sync")]
+use tokio::sync::RwLock;
+
+// WebAssembly/single-threaded synchronization primitives
+#[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
 use std::cell::{Ref, RefCell, RefMut};
-#[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+#[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
 use std::rc::{Rc, Weak};
 
 
 /// A unified container for shared data that works in both multi-threaded and single-threaded environments.
 ///
-/// This struct provides an abstraction over `Arc<RwLock<T>>` (used in multi-threaded environments)
-/// and `Rc<RefCell<T>>` (used in single-threaded environments like WebAssembly).
+/// This struct provides an abstraction over different container types:
+/// - `Arc<std::sync::RwLock<T>>` (used in standard multi-threaded environments)
+/// - `Arc<tokio::sync::RwLock<T>>` (used for async/await support)
+/// - `Rc<RefCell<T>>` (used in single-threaded environments like WebAssembly)
 ///
 /// It allows code to be written once but compile to the most efficient implementation
-/// based on the environment where it will run.
+/// based on the environment where it will run and the features enabled.
 #[derive(Debug)]
 pub struct SharedContainer<T: Debug> {
-    // Thread-safe implementation for native platforms
-    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+    // Standard library thread-safe implementation
+    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    inner: Arc<RwLock<T>>,
+
+    // Tokio async implementation
+    #[cfg(feature = "tokio-sync")]
     inner: Arc<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
     inner: Rc<RefCell<T>>,
 }
 
-// Implement Send and Sync for SharedContainer only for non-wasm builds
-#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+// Implement Send and Sync for SharedContainer only for thread-safe implementations
+#[cfg(any(feature = "std-sync", feature = "tokio-sync"))]
 unsafe impl<T: Debug + Send> Send for SharedContainer<T> {}
 
-#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+#[cfg(any(feature = "std-sync", feature = "tokio-sync"))]
 unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
 
 /// A weak reference to a `SharedContainer`.
 ///
-/// This struct provides an abstraction over `Weak<RwLock<T>>` (used in multi-threaded environments)
-/// and `Weak<RefCell<T>>` (used in single-threaded environments like WebAssembly).
+/// This struct provides an abstraction over different weak reference types:
+/// - `Weak<std::sync::RwLock<T>>` (used in standard multi-threaded environments)
+/// - `Weak<tokio::sync::RwLock<T>>` (used for async/await support)
+/// - `Weak<RefCell<T>>` (used in single-threaded environments like WebAssembly)
 ///
 /// Weak references don't prevent the value from being dropped when no strong references
 /// remain. This helps break reference cycles that could cause memory leaks.
 #[derive(Debug)]
 pub struct WeakSharedContainer<T: Debug> {
-    // Thread-safe implementation for native platforms
-    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+    // Standard library thread-safe implementation
+    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    inner: Weak<RwLock<T>>,
+
+    // Tokio async implementation
+    #[cfg(feature = "tokio-sync")]
     inner: Weak<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
     inner: Weak<RefCell<T>>,
 }
 
@@ -78,23 +129,49 @@ impl<T: Debug> Clone for WeakSharedContainer<T> {
 
 impl<T: Debug + PartialEq> PartialEq for SharedContainer<T> {
     fn eq(&self, other: &Self) -> bool {
-        match (self.read(), other.read()) {
-            (Some(self_val), Some(other_val)) => *self_val == *other_val,
-            _ => false,
+        #[cfg(feature = "tokio-sync")]
+        {
+            // For tokio-sync, we need to block on the async read
+            use std::sync::Arc;
+            let self_inner = Arc::clone(&self.inner);
+            let other_inner = Arc::clone(&other.inner);
+
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let self_val = self_inner.read().await;
+                    let other_val = other_inner.read().await;
+                    *self_val == *other_val
+                })
+            })
+        }
+
+        #[cfg(not(feature = "tokio-sync"))]
+        {
+            match (self.read(), other.read()) {
+                (Some(self_val), Some(other_val)) => *self_val == *other_val,
+                _ => false,
+            }
         }
     }
 }
 
 impl<T: Debug> Clone for SharedContainer<T> {
     fn clone(&self) -> Self {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             SharedContainer {
                 inner: Arc::clone(&self.inner),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            SharedContainer {
+                inner: Arc::clone(&self.inner),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             SharedContainer {
                 inner: Rc::clone(&self.inner),
@@ -111,9 +188,60 @@ impl<T: Debug + Clone> SharedContainer<T> {
     /// # Returns
     /// * `Some(T)`: A clone of the contained value
     /// * `None`: If the lock couldn't be acquired
+    ///
+    /// # Note
+    /// When using the `tokio-sync` feature, this method will try to acquire the lock
+    /// in a blocking manner, which may not be ideal for async code. Consider using
+    /// `get_cloned_async()` instead.
     pub fn get_cloned(&self) -> Option<T> {
-        let guard = self.read()?;
-        Some((*guard).clone())
+        #[cfg(feature = "tokio-sync")]
+        {
+            // For tokio-sync, we need to block on the async read
+            // This is not ideal for async code, but it allows the method to work
+            // in both sync and async contexts
+            use std::sync::Arc;
+            let inner = Arc::clone(&self.inner);
+            let value = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let guard = inner.read().await;
+                    (*guard).clone()
+                })
+            });
+            Some(value)
+        }
+
+        #[cfg(not(feature = "tokio-sync"))]
+        {
+            let guard = self.read()?;
+            Some((*guard).clone())
+        }
+    }
+
+    /// Gets a clone of the contained value asynchronously.
+    ///
+    /// This method is only available when the `tokio-sync` feature is enabled.
+    ///
+    /// # Returns
+    /// A clone of the contained value
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "tokio-sync")]
+    /// # async fn example() {
+    /// # use shared_container::SharedContainer;
+    /// let container = SharedContainer::new(42);
+    /// let value = container.get_cloned_async().await;
+    /// assert_eq!(value, 42);
+    /// # }
+    /// ```
+    #[cfg(feature = "tokio-sync")]
+    pub async fn get_cloned_async(&self) -> T
+    where
+        T: Clone,
+    {
+        let guard = self.inner.read().await;
+        (*guard).clone()
     }
 }
 
@@ -126,14 +254,21 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A new `SharedContainer` instance containing the value
     pub fn new(value: T) -> Self {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             SharedContainer {
                 inner: Arc::new(RwLock::new(value)),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            SharedContainer {
+                inner: Arc::new(RwLock::new(value)),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             SharedContainer {
                 inner: Rc::new(RefCell::new(value)),
@@ -145,17 +280,28 @@ impl<T: Debug> SharedContainer<T> {
     ///
     /// # Returns
     /// * `Some(SharedReadGuard<T>)`: A guard allowing read-only access to the value
-    /// * `None`: If the lock couldn't be acquired (in multi-threaded mode)
+    /// * `None`: If the lock couldn't be acquired
+    ///
+    /// # Note
+    /// When using the `tokio-sync` feature, this method will always return `None`.
+    /// Use `read_async()` instead for async access.
     pub fn read(&self) -> Option<SharedReadGuard<T>> {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             match self.inner.read() {
-                Ok(guard) => Some(SharedReadGuard::Multi(guard)),
+                Ok(guard) => Some(SharedReadGuard::StdSync(guard)),
                 Err(_) => None,
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            // Tokio's RwLock doesn't have a non-async read method, so we can't use it here
+            // Users should use read_async instead
+            None
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             match self.inner.try_borrow() {
                 Ok(borrow) => Some(SharedReadGuard::Single(borrow)),
@@ -168,17 +314,28 @@ impl<T: Debug> SharedContainer<T> {
     ///
     /// # Returns
     /// * `Some(SharedWriteGuard<T>)`: A guard allowing read-write access to the value
-    /// * `None`: If the lock couldn't be acquired (in multi-threaded mode)
+    /// * `None`: If the lock couldn't be acquired
+    ///
+    /// # Note
+    /// When using the `tokio-sync` feature, this method will always return `None`.
+    /// Use `write_async()` instead for async access.
     pub fn write(&self) -> Option<SharedWriteGuard<T>> {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             match self.inner.write() {
-                Ok(guard) => Some(SharedWriteGuard::Multi(guard)),
+                Ok(guard) => Some(SharedWriteGuard::StdSync(guard)),
                 Err(_) => None,
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            // Tokio's RwLock doesn't have a non-async write method, so we can't use it here
+            // Users should use write_async instead
+            None
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             match self.inner.try_borrow_mut() {
                 Ok(borrow) => Some(SharedWriteGuard::Single(borrow)),
@@ -195,19 +352,74 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A `WeakSharedContainer` that points to the same data
     pub fn downgrade(&self) -> WeakSharedContainer<T> {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             WeakSharedContainer {
                 inner: Arc::downgrade(&self.inner),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            WeakSharedContainer {
+                inner: Arc::downgrade(&self.inner),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             WeakSharedContainer {
                 inner: Rc::downgrade(&self.inner),
             }
         }
+    }
+
+    /// Asynchronously gets a read-only access guard to the contained value.
+    ///
+    /// This method is only available when the `tokio-sync` feature is enabled.
+    ///
+    /// # Returns
+    /// A guard allowing read-only access to the value
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "tokio-sync")]
+    /// # async fn example() {
+    /// # use shared_container::SharedContainer;
+    /// let container = SharedContainer::new(42);
+    /// let guard = container.read_async().await;
+    /// assert_eq!(*guard, 42);
+    /// # }
+    /// ```
+    #[cfg(feature = "tokio-sync")]
+    pub async fn read_async(&self) -> SharedReadGuard<'_, T> {
+        let guard = self.inner.read().await;
+        SharedReadGuard::TokioSync(guard)
+    }
+
+    /// Asynchronously gets a writable access guard to the contained value.
+    ///
+    /// This method is only available when the `tokio-sync` feature is enabled.
+    ///
+    /// # Returns
+    /// A guard allowing read-write access to the value
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "tokio-sync")]
+    /// # async fn example() {
+    /// # use shared_container::SharedContainer;
+    /// let container = SharedContainer::new(42);
+    /// let mut guard = container.write_async().await;
+    /// *guard = 100;
+    /// # }
+    /// ```
+    #[cfg(feature = "tokio-sync")]
+    pub async fn write_async(&self) -> SharedWriteGuard<'_, T> {
+        let guard = self.inner.write().await;
+        SharedWriteGuard::TokioSync(guard)
     }
 }
 
@@ -227,15 +439,20 @@ impl<T: Debug> WeakSharedContainer<T> {
 }
 /// A read-only guard for accessing data in a `SharedContainer`.
 ///
-/// This type abstracts over the differences between `RwLockReadGuard` (used in multi-threaded environments)
-/// and `Ref` (used in single-threaded environments like WebAssembly).
+/// This type abstracts over the differences between different read guards:
+/// - `std::sync::RwLockReadGuard` (used in standard multi-threaded environments)
+/// - `tokio::sync::RwLockReadGuard` (used for async/await support)
+/// - `std::cell::Ref` (used in single-threaded environments like WebAssembly)
 ///
 /// It implements `Deref` to allow transparent access to the underlying data.
 pub enum SharedReadGuard<'a, T: Debug> {
-    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
-    Multi(RwLockReadGuard<'a, T>),
+    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    StdSync(std::sync::RwLockReadGuard<'a, T>),
 
-    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+    #[cfg(feature = "tokio-sync")]
+    TokioSync(tokio::sync::RwLockReadGuard<'a, T>),
+
+    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
     Single(Ref<'a, T>),
 }
 
@@ -243,17 +460,30 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             match self {
-                SharedReadGuard::Multi(guard) => guard.deref(),
+                SharedReadGuard::StdSync(guard) => guard.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            match self {
+                SharedReadGuard::TokioSync(guard) => guard.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             match self {
                 SharedReadGuard::Single(borrow) => borrow.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
     }
@@ -261,15 +491,20 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
 
 /// A writable guard for accessing and modifying data in a `SharedContainer`.
 ///
-/// This type abstracts over the differences between `RwLockWriteGuard` (used in multi-threaded environments)
-/// and `RefMut` (used in single-threaded environments like WebAssembly).
+/// This type abstracts over the differences between different write guards:
+/// - `std::sync::RwLockWriteGuard` (used in standard multi-threaded environments)
+/// - `tokio::sync::RwLockWriteGuard` (used for async/await support)
+/// - `std::cell::RefMut` (used in single-threaded environments like WebAssembly)
 ///
 /// It implements both `Deref` and `DerefMut` to allow transparent access to the underlying data.
 pub enum SharedWriteGuard<'a, T: Debug> {
-    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
-    Multi(RwLockWriteGuard<'a, T>),
+    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    StdSync(std::sync::RwLockWriteGuard<'a, T>),
 
-    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+    #[cfg(feature = "tokio-sync")]
+    TokioSync(tokio::sync::RwLockWriteGuard<'a, T>),
+
+    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
     Single(RefMut<'a, T>),
 }
 
@@ -277,17 +512,30 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             match self {
-                SharedWriteGuard::Multi(guard) => guard.deref(),
+                SharedWriteGuard::StdSync(guard) => guard.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            match self {
+                SharedWriteGuard::TokioSync(guard) => guard.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
     }
@@ -295,17 +543,30 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
 
 impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
+        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
         {
             match self {
-                SharedWriteGuard::Multi(guard) => guard.deref_mut(),
+                SharedWriteGuard::StdSync(guard) => guard.deref_mut(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
 
-        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+        #[cfg(feature = "tokio-sync")]
+        {
+            match self {
+                SharedWriteGuard::TokioSync(guard) => guard.deref_mut(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
+            }
+        }
+
+        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref_mut(),
+                #[allow(unreachable_patterns)]
+                _ => unreachable!(),
             }
         }
     }
@@ -320,127 +581,234 @@ mod tests {
         value: i32,
     }
 
-    #[test]
-    fn test_read_access() {
-        let container = SharedContainer::new(TestStruct { value: 42 });
+    // Skip synchronous tests when tokio-sync is enabled
+    #[cfg(not(feature = "tokio-sync"))]
+    mod sync_tests {
+        use super::*;
 
-        // Read access
-        let guard = container.read().unwrap();
-        assert_eq!(guard.value, 42);
-    }
+        #[test]
+        fn test_read_access() {
+            let container = SharedContainer::new(TestStruct { value: 42 });
 
-    #[test]
-    fn test_write_access() {
-        let container = SharedContainer::new(TestStruct { value: 42 });
-
-        // Write access
-        {
-            let mut guard = container.write().unwrap();
-            guard.value = 100;
+            // Read access
+            let guard = container.read().unwrap();
+            assert_eq!(guard.value, 42);
         }
 
-        // Verify change
-        let guard = container.read().unwrap();
-        assert_eq!(guard.value, 100);
-    }
+        #[test]
+        fn test_write_access() {
+            let container = SharedContainer::new(TestStruct { value: 42 });
 
-    #[test]
-    fn test_clone_container() {
-        let container1 = SharedContainer::new(TestStruct { value: 42 });
-        let container2 = container1.clone();
+            // Write access
+            {
+                let mut guard = container.write().unwrap();
+                guard.value = 100;
+            }
 
-        // Modify through container2
-        {
-            let mut guard = container2.write().unwrap();
-            guard.value = 100;
-        }
-
-        // Verify change visible through container1
-        let guard = container1.read().unwrap();
-        assert_eq!(guard.value, 100);
-    }
-
-    #[test]
-    fn test_get_cloned() {
-        let container = SharedContainer::new(TestStruct { value: 42 });
-        let cloned = container.get_cloned().unwrap();
-        assert_eq!(cloned, TestStruct { value: 42 });
-
-        // Modify original
-        {
-            let mut guard = container.write().unwrap();
-            guard.value = 100;
-        }
-
-        // Cloned value should not change
-        assert_eq!(cloned, TestStruct { value: 42 });
-
-        // And we can get a new clone with updated value
-        let new_clone = container.get_cloned().unwrap();
-        assert_eq!(new_clone, TestStruct { value: 100 });
-    }
-
-    #[test]
-    fn test_weak_ref() {
-        let container = SharedContainer::new(TestStruct { value: 42 });
-
-        // Create a weak reference
-        let weak = container.downgrade();
-
-        // Weak reference can be upgraded to a strong reference
-        let container2 = weak.upgrade().unwrap();
-
-        // Both containers point to the same data
-        {
-            let mut guard = container2.write().unwrap();
-            guard.value = 100;
-        }
-
-        // Change visible through first container
-        {
+            // Verify change
             let guard = container.read().unwrap();
             assert_eq!(guard.value, 100);
         }
-        // Drop all strong references
-        drop(container);
-        drop(container2);
 
-        // Weak reference can no longer be upgraded
-        assert!(weak.upgrade().is_none());
-    }
+        #[test]
+        fn test_clone_container() {
+            let container1 = SharedContainer::new(TestStruct { value: 42 });
+            let container2 = container1.clone();
 
-    #[test]
-    fn test_weak_clone() {
-        let container = SharedContainer::new(TestStruct { value: 42 });
+            // Modify through container2
+            {
+                let mut guard = container2.write().unwrap();
+                guard.value = 100;
+            }
 
-        // Create a weak reference and clone it
-        let weak1 = container.downgrade();
-        let weak2 = weak1.clone();
-
-        // Both weak references can be upgraded
-        let container1 = weak1.upgrade().unwrap();
-        let container2 = weak2.upgrade().unwrap();
-
-        // Modify through container2
-        {
-            let mut guard = container2.write().unwrap();
-            guard.value = 100;
-        }
-
-        // Change visible through container1
-        {
+            // Verify change visible through container1
             let guard = container1.read().unwrap();
             assert_eq!(guard.value, 100);
         }
 
-        // Drop all strong references
-        drop(container);
-        drop(container1);
-        drop(container2);
+        #[test]
+        fn test_get_cloned() {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+            let cloned = container.get_cloned().unwrap();
+            assert_eq!(cloned, TestStruct { value: 42 });
 
-        // Neither weak reference can be upgraded
-        assert!(weak1.upgrade().is_none());
-        assert!(weak2.upgrade().is_none());
+            // Modify original
+            {
+                let mut guard = container.write().unwrap();
+                guard.value = 100;
+            }
+
+            // Cloned value should not change
+            assert_eq!(cloned, TestStruct { value: 42 });
+
+            // And we can get a new clone with updated value
+            let new_clone = container.get_cloned().unwrap();
+            assert_eq!(new_clone, TestStruct { value: 100 });
+        }
+
+        #[test]
+        fn test_weak_ref() {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+
+            // Create a weak reference
+            let weak = container.downgrade();
+
+            // Weak reference can be upgraded to a strong reference
+            let container2 = weak.upgrade().unwrap();
+
+            // Both containers point to the same data
+            {
+                let mut guard = container2.write().unwrap();
+                guard.value = 100;
+            }
+
+            // Change visible through first container
+            {
+                let guard = container.read().unwrap();
+                assert_eq!(guard.value, 100);
+            }
+            // Drop all strong references
+            drop(container);
+            drop(container2);
+
+            // Weak reference can no longer be upgraded
+            assert!(weak.upgrade().is_none());
+        }
+
+        #[test]
+        fn test_weak_clone() {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+
+            // Create a weak reference and clone it
+            let weak1 = container.downgrade();
+            let weak2 = weak1.clone();
+
+            // Both weak references can be upgraded
+            let container1 = weak1.upgrade().unwrap();
+            let container2 = weak2.upgrade().unwrap();
+
+            // Modify through container2
+            {
+                let mut guard = container2.write().unwrap();
+                guard.value = 100;
+            }
+
+            // Change visible through container1
+            {
+                let guard = container1.read().unwrap();
+                assert_eq!(guard.value, 100);
+            }
+
+            // Drop all strong references
+            drop(container);
+            drop(container1);
+            drop(container2);
+
+            // Neither weak reference can be upgraded
+            assert!(weak1.upgrade().is_none());
+            assert!(weak2.upgrade().is_none());
+        }
+    }
+}
+
+// Tests specifically for the tokio async implementation
+#[cfg(test)]
+#[cfg(feature = "tokio-sync")]
+mod tokio_tests {
+    use super::*;
+    use tokio::runtime::Runtime;
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestStruct {
+        value: i32,
+    }
+
+    #[test]
+    fn test_tokio_read_access() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+
+            // Synchronous read should return None with tokio-sync
+            assert!(container.read().is_none());
+
+            // Async read access
+            let guard = container.read_async().await;
+            assert_eq!(guard.value, 42);
+        });
+    }
+
+    #[test]
+    fn test_tokio_write_access() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+
+            // Synchronous write should return None with tokio-sync
+            assert!(container.write().is_none());
+
+            // Async write access
+            {
+                let mut guard = container.write_async().await;
+                guard.value = 100;
+            }
+
+            // Verify change
+            let guard = container.read_async().await;
+            assert_eq!(guard.value, 100);
+        });
+    }
+
+    #[test]
+    fn test_tokio_clone_container() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let container1 = SharedContainer::new(TestStruct { value: 42 });
+            let container2 = container1.clone();
+
+            // Modify through container2
+            {
+                let mut guard = container2.write_async().await;
+                guard.value = 100;
+            }
+
+            // Verify change visible through container1
+            let guard = container1.read_async().await;
+            assert_eq!(guard.value, 100);
+        });
+    }
+
+    #[test]
+    fn test_tokio_weak_ref() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let container = SharedContainer::new(TestStruct { value: 42 });
+
+            // Create a weak reference
+            let weak = container.downgrade();
+
+            // Weak reference can be upgraded to a strong reference
+            let container2 = weak.upgrade().unwrap();
+
+            // Both containers point to the same data
+            {
+                let mut guard = container2.write_async().await;
+                guard.value = 100;
+            }
+
+            // Change visible through first container
+            {
+                let guard = container.read_async().await;
+                assert_eq!(guard.value, 100);
+            }
+
+            // Drop all strong references
+            drop(container);
+            drop(container2);
+
+            // Weak reference can no longer be upgraded
+            assert!(weak.upgrade().is_none());
+        });
     }
 }
 

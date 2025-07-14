@@ -23,6 +23,7 @@ This allows code using these containers to be written once but work efficiently 
 - **Weak references**: Supports weak references to prevent reference cycles
 - **Clone support**: Containers can be cloned to create multiple references to the same data
 - **Transparent access**: Uses Rust's deref mechanism for ergonomic access to the contained data
+- **Async support**: Optional support for async/await with Tokio
 
 ## Usage
 
@@ -102,9 +103,11 @@ if let Some(mut guard) = container.write() {
 
 - On native platforms, `SharedContainer<T>` uses `Arc<RwLock<T>>` internally
 - On WebAssembly (`wasm32` target), it uses `Rc<RefCell<T>>` internally
+- With the `tokio-sync` feature, it uses `Arc<tokio::sync::RwLock<T>>` for async support
 - The API remains the same, but the behavior differs slightly:
   - On native platforms, read/write operations can fail if the lock is poisoned
   - On WebAssembly, read/write operations can fail if there's already a borrow
+  - With `tokio-sync`, synchronous methods return `None` and you should use async methods instead
 
 ## Testing WebAssembly Compatibility
 
