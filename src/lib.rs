@@ -577,6 +577,7 @@ mod tests {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq)]
+    #[allow(dead_code)]
     struct TestStruct {
         value: i32,
     }

@@ -31,7 +31,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-shared-container = "0.1.1"
+shared-container = "0.2.0"
 ```
 
 ### Basic Example
@@ -99,6 +99,43 @@ if let Some(mut guard) = container.write() {
 }
 ```
 
+## Async Support with Tokio
+
+This library provides optional support for async/await with Tokio through the `tokio-sync` feature:
+
+```toml
+[dependencies]
+shared-container = { version = "0.2.0", features = ["tokio-sync"] }
+```
+
+When the `tokio-sync` feature is enabled, the library uses `Arc<tokio::sync::RwLock<T>>` internally, and provides async methods for read and write access:
+
+```rust
+use shared_container::SharedContainer;
+
+async fn example() {
+    let container = SharedContainer::new(42);
+
+    // Synchronous methods return None with tokio-sync
+    assert!(container.read().is_none());
+    assert!(container.write().is_none());
+
+    // Use async methods instead
+    let guard = container.read_async().await;
+    assert_eq!(*guard, 42);
+
+    // Async write access
+    {
+        let mut guard = container.write_async().await;
+        *guard = 100;
+    }
+
+    // Verify change
+    let guard = container.read_async().await;
+    assert_eq!(*guard, 100);
+}
+```
+
 ## Platform-specific Behavior
 
 - On native platforms, `SharedContainer<T>` uses `Arc<RwLock<T>>` internally
@@ -115,7 +152,7 @@ This library includes a feature flag to help test WebAssembly compatibility even
 
 ```toml
 [dependencies]
-shared-container = { version = "0.1.1", features = ["force-wasm-impl"] }
+shared-container = { version = "0.2.0", features = ["force-wasm-impl"] }
 ```
 
 When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`) 
