@@ -43,7 +43,6 @@
 //! Note that when using the `tokio-sync` feature, the synchronous `read()` and `write()` methods
 //! will always return `None`. You should use the async methods instead.
 
-use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 // Standard library synchronization primitives (default)
@@ -90,7 +89,7 @@ use std::rc::{Rc, Weak};
 /// It allows code to be written once but compile to the most efficient implementation
 /// based on the environment where it will run and the features enabled.
 #[derive(Debug)]
-pub struct SharedContainer<T: Debug> {
+pub struct SharedContainer<T> {
     // Standard library thread-safe implementation
     #[cfg(all(
         feature = "std-sync",
@@ -117,10 +116,10 @@ pub struct SharedContainer<T: Debug> {
 
 // Implement Send and Sync for SharedContainer only for thread-safe implementations
 #[cfg(any(feature = "std-sync", feature = "tokio-sync"))]
-unsafe impl<T: Debug + Send> Send for SharedContainer<T> {}
+unsafe impl<T: Send> Send for SharedContainer<T> {}
 
 #[cfg(any(feature = "std-sync", feature = "tokio-sync"))]
-unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
+unsafe impl<T: Send + Sync> Sync for SharedContainer<T> {}
 
 /// A weak reference to a `SharedContainer`.
 ///
@@ -132,7 +131,7 @@ unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
 /// Weak references don't prevent the value from being dropped when no strong references
 /// remain. This helps break reference cycles that could cause memory leaks.
 #[derive(Debug)]
-pub struct WeakSharedContainer<T: Debug> {
+pub struct WeakSharedContainer<T> {
     // Standard library thread-safe implementation
     #[cfg(all(
         feature = "std-sync",
@@ -157,7 +156,7 @@ pub struct WeakSharedContainer<T: Debug> {
     inner: Weak<RefCell<T>>,
 }
 
-impl<T: Debug> Clone for WeakSharedContainer<T> {
+impl<T> Clone for WeakSharedContainer<T> {
     fn clone(&self) -> Self {
         // Same implementation for both platforms, but different underlying types
         WeakSharedContainer {
@@ -166,7 +165,7 @@ impl<T: Debug> Clone for WeakSharedContainer<T> {
     }
 }
 
-impl<T: Debug + PartialEq> PartialEq for SharedContainer<T> {
+impl<T: PartialEq> PartialEq for SharedContainer<T> {
     fn eq(&self, other: &Self) -> bool {
         #[cfg(feature = "tokio-sync")]
         {
@@ -194,7 +193,7 @@ impl<T: Debug + PartialEq> PartialEq for SharedContainer<T> {
     }
 }
 
-impl<T: Debug> Clone for SharedContainer<T> {
+impl<T> Clone for SharedContainer<T> {
     fn clone(&self) -> Self {
         #[cfg(all(
             feature = "std-sync",
@@ -230,7 +229,7 @@ impl<T: Debug> Clone for SharedContainer<T> {
     }
 }
 
-impl<T: Debug + Clone> SharedContainer<T> {
+impl<T: Clone> SharedContainer<T> {
     /// Gets a clone of the contained value.
     ///
     /// This method acquires a read lock, clones the value, and releases the lock.
@@ -295,7 +294,7 @@ impl<T: Debug + Clone> SharedContainer<T> {
     }
 }
 
-impl<T: Debug> SharedContainer<T> {
+impl<T> SharedContainer<T> {
     /// Creates a new `SharedContainer` containing the given value.
     ///
     /// # Parameters
@@ -517,7 +516,7 @@ impl<T: Debug> SharedContainer<T> {
     }
 }
 
-impl<T: Debug> WeakSharedContainer<T> {
+impl<T> WeakSharedContainer<T> {
     /// Attempts to create a strong `SharedContainer` from this weak reference.
     ///
     /// This will succeed if the value has not yet been dropped, i.e., if there are
@@ -539,7 +538,7 @@ impl<T: Debug> WeakSharedContainer<T> {
 /// - `std::cell::Ref` (used in single-threaded environments like WebAssembly)
 ///
 /// It implements `Deref` to allow transparent access to the underlying data.
-pub enum SharedReadGuard<'a, T: Debug> {
+pub enum SharedReadGuard<'a, T> {
     #[cfg(all(
         feature = "std-sync",
         not(feature = "tokio-sync"),
@@ -561,7 +560,7 @@ pub enum SharedReadGuard<'a, T: Debug> {
     Single(Ref<'a, T>),
 }
 
-impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
+impl<'a, T> Deref for SharedReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -613,7 +612,7 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
 /// - `std::cell::RefMut` (used in single-threaded environments like WebAssembly)
 ///
 /// It implements both `Deref` and `DerefMut` to allow transparent access to the underlying data.
-pub enum SharedWriteGuard<'a, T: Debug> {
+pub enum SharedWriteGuard<'a, T> {
     #[cfg(all(
         feature = "std-sync",
         not(feature = "tokio-sync"),
@@ -635,7 +634,7 @@ pub enum SharedWriteGuard<'a, T: Debug> {
     Single(RefMut<'a, T>),
 }
 
-impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
+impl<'a, T> Deref for SharedWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -679,7 +678,7 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
     }
 }
 
-impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
+impl<'a, T> DerefMut for SharedWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         #[cfg(all(
             feature = "std-sync",
@@ -723,7 +722,6 @@ impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[derive(Debug, Clone, PartialEq)]
     #[allow(dead_code)]
@@ -735,6 +733,7 @@ mod tests {
     #[cfg(not(feature = "tokio-sync"))]
     mod sync_tests {
         use super::*;
+        use crate::SharedContainer;
 
         #[test]
         fn test_read_access() {

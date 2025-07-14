@@ -32,7 +32,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-shared-container = "0.2.0"
+shared-container = "0.2"
 ```
 
 ### Basic Example
@@ -45,12 +45,12 @@ let container = SharedContainer::new(42);
 
 // Read access
 if let Some(guard) = container.read() {
-    println!("Value: {}", *guard);
+println ! ("Value: {}", * guard);
 }
 
 // Write access
-if let Some(mut guard) = container.write() {
-    *guard = 100;
+if let Some( mut guard) = container.write() {
+* guard = 100;
 }
 
 // Clone the container (both point to the same data)
@@ -58,7 +58,7 @@ let container2 = container.clone();
 
 // Changes through one container are visible through the other
 if let Some(guard) = container2.read() {
-    assert_eq!(*guard, 100);
+assert_eq ! ( * guard, 100);
 }
 
 // Create a weak reference
@@ -66,7 +66,7 @@ let weak = container.downgrade();
 
 // Upgrade weak reference to strong reference
 if let Some(container3) = weak.upgrade() {
-    // Use container3...
+// Use container3...
 }
 ```
 
@@ -83,20 +83,20 @@ struct User {
 }
 
 let user = User {
-    id: 1,
-    name: "Alice".to_string(),
+id: 1,
+name: "Alice".to_string(),
 };
 
 let container = SharedContainer::new(user);
 
 // Get a clone of the contained value
 if let Some(user_clone) = container.get_cloned() {
-    println!("User: {:?}", user_clone);
+println ! ("User: {:?}", user_clone);
 }
 
 // Modify the user
-if let Some(mut guard) = container.write() {
-    guard.name = "Bob".to_string();
+if let Some( mut guard) = container.write() {
+guard.name = "Bob".to_string();
 }
 ```
 
@@ -106,7 +106,7 @@ This library provides optional support for async/await with Tokio through the `t
 
 ```toml
 [dependencies]
-shared-container = { version = "0.2.0", features = ["tokio-sync"] }
+shared-container = { version = "0.2", features = ["tokio-sync"] }
 ```
 
 When the `tokio-sync` feature is enabled, the library uses `Arc<tokio::sync::RwLock<T>>` internally, and provides async
@@ -154,7 +154,7 @@ This library includes a feature flag to help test WebAssembly compatibility even
 
 ```toml
 [dependencies]
-shared-container = { version = "0.2.0", features = ["force-wasm-impl"] }
+shared-container = { version = "0.2", features = ["force-wasm-impl"] }
 ```
 
 When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`)
