@@ -35,6 +35,7 @@ For convenience, you can use the provided script to run all tests with different
 ```
 
 This script will run tests with:
+
 1. Default features (std-sync)
 2. tokio-sync feature
 3. wasm-sync feature
@@ -43,6 +44,7 @@ This script will run tests with:
 ## Test Coverage
 
 The tests cover:
+
 - Basic container operations (create, read, write)
 - Cloning containers
 - Weak references

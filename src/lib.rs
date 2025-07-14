@@ -47,7 +47,11 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 // Standard library synchronization primitives (default)
-#[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+#[cfg(all(
+    feature = "std-sync",
+    not(feature = "tokio-sync"),
+    not(feature = "wasm-sync")
+))]
 use std::sync::{Arc, RwLock, Weak};
 
 // Tokio async synchronization primitives
@@ -57,11 +61,24 @@ use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
 
 // WebAssembly/single-threaded synchronization primitives
-#[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+#[cfg(any(
+    feature = "wasm-sync",
+    all(
+        target_arch = "wasm32",
+        not(feature = "std-sync"),
+        not(feature = "tokio-sync")
+    )
+))]
 use std::cell::{Ref, RefCell, RefMut};
-#[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+#[cfg(any(
+    feature = "wasm-sync",
+    all(
+        target_arch = "wasm32",
+        not(feature = "std-sync"),
+        not(feature = "tokio-sync")
+    )
+))]
 use std::rc::{Rc, Weak};
-
 
 /// A unified container for shared data that works in both multi-threaded and single-threaded environments.
 ///
@@ -75,7 +92,11 @@ use std::rc::{Rc, Weak};
 #[derive(Debug)]
 pub struct SharedContainer<T: Debug> {
     // Standard library thread-safe implementation
-    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    #[cfg(all(
+        feature = "std-sync",
+        not(feature = "tokio-sync"),
+        not(feature = "wasm-sync")
+    ))]
     inner: Arc<RwLock<T>>,
 
     // Tokio async implementation
@@ -83,7 +104,14 @@ pub struct SharedContainer<T: Debug> {
     inner: Arc<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+    #[cfg(any(
+        feature = "wasm-sync",
+        all(
+            target_arch = "wasm32",
+            not(feature = "std-sync"),
+            not(feature = "tokio-sync")
+        )
+    ))]
     inner: Rc<RefCell<T>>,
 }
 
@@ -106,7 +134,11 @@ unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
 #[derive(Debug)]
 pub struct WeakSharedContainer<T: Debug> {
     // Standard library thread-safe implementation
-    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    #[cfg(all(
+        feature = "std-sync",
+        not(feature = "tokio-sync"),
+        not(feature = "wasm-sync")
+    ))]
     inner: Weak<RwLock<T>>,
 
     // Tokio async implementation
@@ -114,7 +146,14 @@ pub struct WeakSharedContainer<T: Debug> {
     inner: Weak<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+    #[cfg(any(
+        feature = "wasm-sync",
+        all(
+            target_arch = "wasm32",
+            not(feature = "std-sync"),
+            not(feature = "tokio-sync")
+        )
+    ))]
     inner: Weak<RefCell<T>>,
 }
 
@@ -157,7 +196,11 @@ impl<T: Debug + PartialEq> PartialEq for SharedContainer<T> {
 
 impl<T: Debug> Clone for SharedContainer<T> {
     fn clone(&self) -> Self {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             SharedContainer {
                 inner: Arc::clone(&self.inner),
@@ -171,7 +214,14 @@ impl<T: Debug> Clone for SharedContainer<T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             SharedContainer {
                 inner: Rc::clone(&self.inner),
@@ -254,7 +304,11 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A new `SharedContainer` instance containing the value
     pub fn new(value: T) -> Self {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             SharedContainer {
                 inner: Arc::new(RwLock::new(value)),
@@ -268,7 +322,14 @@ impl<T: Debug> SharedContainer<T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             SharedContainer {
                 inner: Rc::new(RefCell::new(value)),
@@ -286,7 +347,11 @@ impl<T: Debug> SharedContainer<T> {
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `read_async()` instead for async access.
     pub fn read(&self) -> Option<SharedReadGuard<T>> {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             match self.inner.read() {
                 Ok(guard) => Some(SharedReadGuard::StdSync(guard)),
@@ -301,7 +366,14 @@ impl<T: Debug> SharedContainer<T> {
             None
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             match self.inner.try_borrow() {
                 Ok(borrow) => Some(SharedReadGuard::Single(borrow)),
@@ -320,7 +392,11 @@ impl<T: Debug> SharedContainer<T> {
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `write_async()` instead for async access.
     pub fn write(&self) -> Option<SharedWriteGuard<T>> {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             match self.inner.write() {
                 Ok(guard) => Some(SharedWriteGuard::StdSync(guard)),
@@ -335,7 +411,14 @@ impl<T: Debug> SharedContainer<T> {
             None
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             match self.inner.try_borrow_mut() {
                 Ok(borrow) => Some(SharedWriteGuard::Single(borrow)),
@@ -352,7 +435,11 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A `WeakSharedContainer` that points to the same data
     pub fn downgrade(&self) -> WeakSharedContainer<T> {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             WeakSharedContainer {
                 inner: Arc::downgrade(&self.inner),
@@ -366,7 +453,14 @@ impl<T: Debug> SharedContainer<T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             WeakSharedContainer {
                 inner: Rc::downgrade(&self.inner),
@@ -446,13 +540,24 @@ impl<T: Debug> WeakSharedContainer<T> {
 ///
 /// It implements `Deref` to allow transparent access to the underlying data.
 pub enum SharedReadGuard<'a, T: Debug> {
-    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    #[cfg(all(
+        feature = "std-sync",
+        not(feature = "tokio-sync"),
+        not(feature = "wasm-sync")
+    ))]
     StdSync(std::sync::RwLockReadGuard<'a, T>),
 
     #[cfg(feature = "tokio-sync")]
     TokioSync(tokio::sync::RwLockReadGuard<'a, T>),
 
-    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+    #[cfg(any(
+        feature = "wasm-sync",
+        all(
+            target_arch = "wasm32",
+            not(feature = "std-sync"),
+            not(feature = "tokio-sync")
+        )
+    ))]
     Single(Ref<'a, T>),
 }
 
@@ -460,7 +565,11 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             match self {
                 SharedReadGuard::StdSync(guard) => guard.deref(),
@@ -478,7 +587,14 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             match self {
                 SharedReadGuard::Single(borrow) => borrow.deref(),
@@ -498,13 +614,24 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
 ///
 /// It implements both `Deref` and `DerefMut` to allow transparent access to the underlying data.
 pub enum SharedWriteGuard<'a, T: Debug> {
-    #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+    #[cfg(all(
+        feature = "std-sync",
+        not(feature = "tokio-sync"),
+        not(feature = "wasm-sync")
+    ))]
     StdSync(std::sync::RwLockWriteGuard<'a, T>),
 
     #[cfg(feature = "tokio-sync")]
     TokioSync(tokio::sync::RwLockWriteGuard<'a, T>),
 
-    #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+    #[cfg(any(
+        feature = "wasm-sync",
+        all(
+            target_arch = "wasm32",
+            not(feature = "std-sync"),
+            not(feature = "tokio-sync")
+        )
+    ))]
     Single(RefMut<'a, T>),
 }
 
@@ -512,7 +639,11 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             match self {
                 SharedWriteGuard::StdSync(guard) => guard.deref(),
@@ -530,7 +661,14 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref(),
@@ -543,7 +681,11 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
 
 impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        #[cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
         {
             match self {
                 SharedWriteGuard::StdSync(guard) => guard.deref_mut(),
@@ -561,7 +703,14 @@ impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
             }
         }
 
-        #[cfg(any(feature = "wasm-sync", all(target_arch = "wasm32", not(feature = "std-sync"), not(feature = "tokio-sync"))))]
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref_mut(),

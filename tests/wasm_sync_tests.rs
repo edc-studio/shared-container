@@ -148,7 +148,6 @@ fn test_wasm_partial_eq() {
     assert_ne!(container1, container3);
 }
 
-
 #[test]
 fn test_wasm_write_conflict() {
     let container = SharedContainer::new(TestStruct { value: 42 });

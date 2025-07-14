@@ -8,7 +8,8 @@ A unified abstraction for shared data access in both multi-threaded and single-t
 
 ## Overview
 
-`shared-container` provides a unified abstraction over different container types used for shared data access with interior mutability in different contexts. It abstracts over the differences between:
+`shared-container` provides a unified abstraction over different container types used for shared data access with
+interior mutability in different contexts. It abstracts over the differences between:
 
 - Thread-safe `Arc<RwLock<T>>` used in multi-threaded environments
 - `Rc<RefCell<T>>` used in single-threaded environments like WebAssembly
@@ -108,7 +109,8 @@ This library provides optional support for async/await with Tokio through the `t
 shared-container = { version = "0.2.0", features = ["tokio-sync"] }
 ```
 
-When the `tokio-sync` feature is enabled, the library uses `Arc<tokio::sync::RwLock<T>>` internally, and provides async methods for read and write access:
+When the `tokio-sync` feature is enabled, the library uses `Arc<tokio::sync::RwLock<T>>` internally, and provides async
+methods for read and write access:
 
 ```rust
 use shared_container::SharedContainer;
@@ -142,9 +144,9 @@ async fn example() {
 - On WebAssembly (`wasm32` target), it uses `Rc<RefCell<T>>` internally
 - With the `tokio-sync` feature, it uses `Arc<tokio::sync::RwLock<T>>` for async support
 - The API remains the same, but the behavior differs slightly:
-  - On native platforms, read/write operations can fail if the lock is poisoned
-  - On WebAssembly, read/write operations can fail if there's already a borrow
-  - With `tokio-sync`, synchronous methods return `None` and you should use async methods instead
+    - On native platforms, read/write operations can fail if the lock is poisoned
+    - On WebAssembly, read/write operations can fail if there's already a borrow
+    - With `tokio-sync`, synchronous methods return `None` and you should use async methods instead
 
 ## Testing WebAssembly Compatibility
 
@@ -155,8 +157,8 @@ This library includes a feature flag to help test WebAssembly compatibility even
 shared-container = { version = "0.2.0", features = ["force-wasm-impl"] }
 ```
 
-When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`) 
-even when compiling for native platforms. This allows you to test WebAssembly-specific behavior without actually 
+When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`)
+even when compiling for native platforms. This allows you to test WebAssembly-specific behavior without actually
 compiling to WebAssembly.
 
 To run the WebAssembly-specific tests:

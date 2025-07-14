@@ -1,4 +1,8 @@
-#![cfg(all(feature = "std-sync", not(feature = "tokio-sync"), not(feature = "wasm-sync")))]
+#![cfg(all(
+    feature = "std-sync",
+    not(feature = "tokio-sync"),
+    not(feature = "wasm-sync")
+))]
 
 use shared_container::SharedContainer;
 
@@ -130,7 +134,6 @@ fn test_weak_clone() {
     assert!(weak1.upgrade().is_none());
     assert!(weak2.upgrade().is_none());
 }
-
 
 #[test]
 fn test_partial_eq() {
