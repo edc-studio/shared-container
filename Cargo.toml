@@ -2,6 +2,7 @@
 name = "shared-container"
 version = "0.2.0"
 edition = "2024"
+authors = ["Every Day Coding Team"]
 description = "A unified abstraction for shared data access in both multi-threaded and single-threaded environments"
 license = "MIT"
 repository = "https://github.com/edc-studio/shared-container"
