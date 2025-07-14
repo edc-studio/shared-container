@@ -30,7 +30,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-shared-container = "0.1.0"
+shared-container = "0.1.1"
 ```
 
 ### Basic Example
@@ -105,6 +105,25 @@ if let Some(mut guard) = container.write() {
 - The API remains the same, but the behavior differs slightly:
   - On native platforms, read/write operations can fail if the lock is poisoned
   - On WebAssembly, read/write operations can fail if there's already a borrow
+
+## Testing WebAssembly Compatibility
+
+This library includes a feature flag to help test WebAssembly compatibility even on native platforms:
+
+```toml
+[dependencies]
+shared-container = { version = "0.1.1", features = ["force-wasm-impl"] }
+```
+
+When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`) 
+even when compiling for native platforms. This allows you to test WebAssembly-specific behavior without actually 
+compiling to WebAssembly.
+
+To run the WebAssembly-specific tests:
+
+```bash
+cargo test --features force-wasm-impl
+```
 
 ## License
 

@@ -14,13 +14,13 @@ use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 // Native platforms use thread-safe types
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 
 // WebAssembly uses single-threaded types
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
 use std::cell::{Ref, RefCell, RefMut};
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
 use std::rc::{Rc, Weak};
 
 
@@ -34,19 +34,19 @@ use std::rc::{Rc, Weak};
 #[derive(Debug)]
 pub struct SharedContainer<T: Debug> {
     // Thread-safe implementation for native platforms
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
     inner: Arc<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
     inner: Rc<RefCell<T>>,
 }
 
 // Implement Send and Sync for SharedContainer only for non-wasm builds
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
 unsafe impl<T: Debug + Send> Send for SharedContainer<T> {}
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
 unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
 
 /// A weak reference to a `SharedContainer`.
@@ -59,11 +59,11 @@ unsafe impl<T: Debug + Send + Sync> Sync for SharedContainer<T> {}
 #[derive(Debug)]
 pub struct WeakSharedContainer<T: Debug> {
     // Thread-safe implementation for native platforms
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
     inner: Weak<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
     inner: Weak<RefCell<T>>,
 }
 
@@ -87,14 +87,14 @@ impl<T: Debug + PartialEq> PartialEq for SharedContainer<T> {
 
 impl<T: Debug> Clone for SharedContainer<T> {
     fn clone(&self) -> Self {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             SharedContainer {
                 inner: Arc::clone(&self.inner),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             SharedContainer {
                 inner: Rc::clone(&self.inner),
@@ -126,14 +126,14 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A new `SharedContainer` instance containing the value
     pub fn new(value: T) -> Self {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             SharedContainer {
                 inner: Arc::new(RwLock::new(value)),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             SharedContainer {
                 inner: Rc::new(RefCell::new(value)),
@@ -147,7 +147,7 @@ impl<T: Debug> SharedContainer<T> {
     /// * `Some(SharedReadGuard<T>)`: A guard allowing read-only access to the value
     /// * `None`: If the lock couldn't be acquired (in multi-threaded mode)
     pub fn read(&self) -> Option<SharedReadGuard<T>> {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             match self.inner.read() {
                 Ok(guard) => Some(SharedReadGuard::Multi(guard)),
@@ -155,7 +155,7 @@ impl<T: Debug> SharedContainer<T> {
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             match self.inner.try_borrow() {
                 Ok(borrow) => Some(SharedReadGuard::Single(borrow)),
@@ -170,7 +170,7 @@ impl<T: Debug> SharedContainer<T> {
     /// * `Some(SharedWriteGuard<T>)`: A guard allowing read-write access to the value
     /// * `None`: If the lock couldn't be acquired (in multi-threaded mode)
     pub fn write(&self) -> Option<SharedWriteGuard<T>> {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             match self.inner.write() {
                 Ok(guard) => Some(SharedWriteGuard::Multi(guard)),
@@ -178,7 +178,7 @@ impl<T: Debug> SharedContainer<T> {
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             match self.inner.try_borrow_mut() {
                 Ok(borrow) => Some(SharedWriteGuard::Single(borrow)),
@@ -195,14 +195,14 @@ impl<T: Debug> SharedContainer<T> {
     /// # Returns
     /// A `WeakSharedContainer` that points to the same data
     pub fn downgrade(&self) -> WeakSharedContainer<T> {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             WeakSharedContainer {
                 inner: Arc::downgrade(&self.inner),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             WeakSharedContainer {
                 inner: Rc::downgrade(&self.inner),
@@ -232,10 +232,10 @@ impl<T: Debug> WeakSharedContainer<T> {
 ///
 /// It implements `Deref` to allow transparent access to the underlying data.
 pub enum SharedReadGuard<'a, T: Debug> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
     Multi(RwLockReadGuard<'a, T>),
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
     Single(Ref<'a, T>),
 }
 
@@ -243,14 +243,14 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             match self {
                 SharedReadGuard::Multi(guard) => guard.deref(),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             match self {
                 SharedReadGuard::Single(borrow) => borrow.deref(),
@@ -266,10 +266,10 @@ impl<'a, T: Debug> Deref for SharedReadGuard<'a, T> {
 ///
 /// It implements both `Deref` and `DerefMut` to allow transparent access to the underlying data.
 pub enum SharedWriteGuard<'a, T: Debug> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
     Multi(RwLockWriteGuard<'a, T>),
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
     Single(RefMut<'a, T>),
 }
 
@@ -277,14 +277,14 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             match self {
                 SharedWriteGuard::Multi(guard) => guard.deref(),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref(),
@@ -295,14 +295,14 @@ impl<'a, T: Debug> Deref for SharedWriteGuard<'a, T> {
 
 impl<'a, T: Debug> DerefMut for SharedWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "force-wasm-impl")))]
         {
             match self {
                 SharedWriteGuard::Multi(guard) => guard.deref_mut(),
             }
         }
 
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
         {
             match self {
                 SharedWriteGuard::Single(borrow) => borrow.deref_mut(),
@@ -441,5 +441,79 @@ mod tests {
         // Neither weak reference can be upgraded
         assert!(weak1.upgrade().is_none());
         assert!(weak2.upgrade().is_none());
+    }
+}
+
+// Tests specifically for the WebAssembly implementation
+// These tests can be run on any platform by enabling the force-wasm-impl feature
+#[cfg(test)]
+#[cfg(any(target_arch = "wasm32", feature = "force-wasm-impl"))]
+mod wasm_tests {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestStruct {
+        value: i32,
+    }
+
+    #[test]
+    fn test_wasm_read_access() {
+        let container = SharedContainer::new(TestStruct { value: 42 });
+
+        // Read access
+        let guard = container.read().unwrap();
+        assert_eq!(guard.value, 42);
+    }
+
+    #[test]
+    fn test_wasm_write_access() {
+        let container = SharedContainer::new(TestStruct { value: 42 });
+
+        // Write access
+        {
+            let mut guard = container.write().unwrap();
+            guard.value = 100;
+        }
+
+        // Verify change
+        let guard = container.read().unwrap();
+        assert_eq!(guard.value, 100);
+    }
+
+    #[test]
+    fn test_wasm_borrow_conflict() {
+        let container = SharedContainer::new(TestStruct { value: 42 });
+
+        // Get a read borrow
+        let _guard = container.read().unwrap();
+
+        // Trying to get a write borrow while a read borrow exists should fail
+        assert!(container.write().is_none());
+    }
+
+    #[test]
+    fn test_wasm_multiple_reads() {
+        let container = SharedContainer::new(TestStruct { value: 42 });
+
+        // Multiple read borrows should work
+        let _guard1 = container.read().unwrap();
+        let guard2 = container.read().unwrap();
+
+        assert_eq!(guard2.value, 42);
+    }
+
+    #[test]
+    fn test_wasm_weak_ref() {
+        let container = SharedContainer::new(TestStruct { value: 42 });
+        let weak = container.downgrade();
+
+        // Upgrade should work
+        let container2 = weak.upgrade().unwrap();
+        assert_eq!(container2.read().unwrap().value, 42);
+
+        // After dropping all strong references, upgrade should fail
+        drop(container);
+        drop(container2);
+        assert!(weak.upgrade().is_none());
     }
 }
