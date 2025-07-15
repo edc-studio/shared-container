@@ -277,6 +277,10 @@ impl<T: Clone> SharedContainer<T> {
     /// When using the `tokio-sync` feature, this method will try to acquire the lock
     /// in a blocking manner, which may not be ideal for async code. Consider using
     /// `get_cloned_async()` instead.
+    #[cfg_attr(feature = "tokio-sync", deprecated(
+        since = "0.2.5",
+        note = "This method uses blocking operations when using tokio-sync feature, which is not ideal for async code. Consider using get_cloned_async() instead."
+    ))]
     pub fn get_cloned(&self) -> Option<T> {
         #[cfg(feature = "tokio-sync")]
         {
@@ -386,6 +390,10 @@ impl<T> SharedContainer<T> {
     /// # Note
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `read_async()` instead for async access.
+    #[cfg_attr(feature = "tokio-sync", deprecated(
+        since = "0.2.5",
+        note = "This method always returns None when using tokio-sync feature. Use read_async() instead."
+    ))]
     pub fn read(&self) -> Option<SharedReadGuard<T>> {
         #[cfg(all(
             feature = "std-sync",
@@ -431,6 +439,10 @@ impl<T> SharedContainer<T> {
     /// # Note
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `write_async()` instead for async access.
+    #[cfg_attr(feature = "tokio-sync", deprecated(
+        since = "0.2.5",
+        note = "This method always returns None when using tokio-sync feature. Use write_async() instead."
+    ))]
     pub fn write(&self) -> Option<SharedWriteGuard<T>> {
         #[cfg(all(
             feature = "std-sync",
