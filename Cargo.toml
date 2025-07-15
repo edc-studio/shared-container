@@ -1,6 +1,6 @@
 [package]
 name = "shared-container"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 authors = ["Every Day Coding Team"]
 description = "A unified abstraction for shared data access in both multi-threaded and single-threaded environments"
@@ -14,7 +14,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-tokio = { version = "1", features = ["sync"], optional = true }
+tokio = { version = "1.46", features = ["sync", "rt", "rt-multi-thread"], optional = true }
 
 [features]
 # Default features
@@ -29,4 +29,4 @@ wasm-sync = []
 force-wasm-impl = ["wasm-sync"]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1.46", features = ["rt-multi-thread", "sync", "macros"] }
