@@ -285,6 +285,7 @@ impl<T: Clone> SharedContainer<T> {
     /// # }
     /// ```
     #[cfg(feature = "tokio-sync")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-sync")))]
     pub async fn get_cloned_async(&self) -> T
     where
         T: Clone,
@@ -486,6 +487,7 @@ impl<T> SharedContainer<T> {
     /// # }
     /// ```
     #[cfg(feature = "tokio-sync")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-sync")))]
     pub async fn read_async(&self) -> SharedReadGuard<'_, T> {
         let guard = self.inner.read().await;
         SharedReadGuard::TokioSync(guard)
@@ -510,6 +512,7 @@ impl<T> SharedContainer<T> {
     /// # }
     /// ```
     #[cfg(feature = "tokio-sync")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tokio-sync")))]
     pub async fn write_async(&self) -> SharedWriteGuard<'_, T> {
         let guard = self.inner.write().await;
         SharedWriteGuard::TokioSync(guard)
