@@ -43,6 +43,8 @@
 //! Note that when using the `tokio-sync` feature, the synchronous `read()` and `write()` methods
 //! will always return `None`. You should use the async methods instead.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 use std::ops::{Deref, DerefMut};
 
 // Standard library synchronization primitives (default)
@@ -77,7 +79,7 @@ use std::cell::{Ref, RefCell, RefMut};
         not(feature = "tokio-sync")
     )
 ))]
-use std::rc::{Rc, Weak};
+use std::rc::{Rc, Weak as RcWeak};
 
 /// A unified container for shared data that works in both multi-threaded and single-threaded environments.
 ///
@@ -96,11 +98,11 @@ pub struct SharedContainer<T> {
         not(feature = "tokio-sync"),
         not(feature = "wasm-sync")
     ))]
-    inner: Arc<RwLock<T>>,
+    std_inner: Arc<RwLock<T>>,
 
     // Tokio async implementation
     #[cfg(feature = "tokio-sync")]
-    inner: Arc<RwLock<T>>,
+    tokio_inner: Arc<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
     #[cfg(any(
@@ -111,7 +113,7 @@ pub struct SharedContainer<T> {
             not(feature = "tokio-sync")
         )
     ))]
-    inner: Rc<RefCell<T>>,
+    wasm_inner: Rc<RefCell<T>>,
 }
 
 // Implement Send and Sync for SharedContainer only for thread-safe implementations
@@ -138,11 +140,11 @@ pub struct WeakSharedContainer<T> {
         not(feature = "tokio-sync"),
         not(feature = "wasm-sync")
     ))]
-    inner: Weak<RwLock<T>>,
+    std_inner: Weak<RwLock<T>>,
 
     // Tokio async implementation
     #[cfg(feature = "tokio-sync")]
-    inner: Weak<RwLock<T>>,
+    tokio_inner: Weak<RwLock<T>>,
 
     // Single-threaded implementation for WebAssembly
     #[cfg(any(
@@ -153,14 +155,42 @@ pub struct WeakSharedContainer<T> {
             not(feature = "tokio-sync")
         )
     ))]
-    inner: Weak<RefCell<T>>,
+    wasm_inner: RcWeak<RefCell<T>>,
 }
 
 impl<T> Clone for WeakSharedContainer<T> {
     fn clone(&self) -> Self {
-        // Same implementation for both platforms, but different underlying types
-        WeakSharedContainer {
-            inner: self.inner.clone(),
+        // Different implementations for different platforms
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
+        {
+            WeakSharedContainer {
+                std_inner: self.std_inner.clone(),
+            }
+        }
+
+        #[cfg(feature = "tokio-sync")]
+        {
+            WeakSharedContainer {
+                tokio_inner: self.tokio_inner.clone(),
+            }
+        }
+
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
+        {
+            WeakSharedContainer {
+                wasm_inner: self.wasm_inner.clone(),
+            }
         }
     }
 }
@@ -171,11 +201,16 @@ impl<T: PartialEq> PartialEq for SharedContainer<T> {
         {
             // For tokio-sync, we need to block on the async read
             use std::sync::Arc;
-            let self_inner = Arc::clone(&self.inner);
-            let other_inner = Arc::clone(&other.inner);
+            let self_inner = Arc::clone(&self.tokio_inner);
+            let other_inner = Arc::clone(&other.tokio_inner);
 
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
+                // Create a new runtime for this blocking operation
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
                     let self_val = self_inner.read().await;
                     let other_val = other_inner.read().await;
                     *self_val == *other_val
@@ -202,14 +237,14 @@ impl<T> Clone for SharedContainer<T> {
         ))]
         {
             SharedContainer {
-                inner: Arc::clone(&self.inner),
+                std_inner: Arc::clone(&self.std_inner),
             }
         }
 
         #[cfg(feature = "tokio-sync")]
         {
             SharedContainer {
-                inner: Arc::clone(&self.inner),
+                tokio_inner: Arc::clone(&self.tokio_inner),
             }
         }
 
@@ -223,7 +258,7 @@ impl<T> Clone for SharedContainer<T> {
         ))]
         {
             SharedContainer {
-                inner: Rc::clone(&self.inner),
+                wasm_inner: Rc::clone(&self.wasm_inner),
             }
         }
     }
@@ -249,9 +284,14 @@ impl<T: Clone> SharedContainer<T> {
             // This is not ideal for async code, but it allows the method to work
             // in both sync and async contexts
             use std::sync::Arc;
-            let inner = Arc::clone(&self.inner);
+            let inner = Arc::clone(&self.tokio_inner);
             let value = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
+                // Create a new runtime for this blocking operation
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
                     let guard = inner.read().await;
                     (*guard).clone()
                 })
@@ -290,7 +330,7 @@ impl<T: Clone> SharedContainer<T> {
     where
         T: Clone,
     {
-        let guard = self.inner.read().await;
+        let guard = self.tokio_inner.read().await;
         (*guard).clone()
     }
 }
@@ -311,14 +351,14 @@ impl<T> SharedContainer<T> {
         ))]
         {
             SharedContainer {
-                inner: Arc::new(RwLock::new(value)),
+                std_inner: Arc::new(RwLock::new(value)),
             }
         }
 
         #[cfg(feature = "tokio-sync")]
         {
             SharedContainer {
-                inner: Arc::new(RwLock::new(value)),
+                tokio_inner: Arc::new(RwLock::new(value)),
             }
         }
 
@@ -332,7 +372,7 @@ impl<T> SharedContainer<T> {
         ))]
         {
             SharedContainer {
-                inner: Rc::new(RefCell::new(value)),
+                wasm_inner: Rc::new(RefCell::new(value)),
             }
         }
     }
@@ -353,7 +393,7 @@ impl<T> SharedContainer<T> {
             not(feature = "wasm-sync")
         ))]
         {
-            match self.inner.read() {
+            match self.std_inner.read() {
                 Ok(guard) => Some(SharedReadGuard::StdSync(guard)),
                 Err(_) => None,
             }
@@ -375,7 +415,7 @@ impl<T> SharedContainer<T> {
             )
         ))]
         {
-            match self.inner.try_borrow() {
+            match self.wasm_inner.try_borrow() {
                 Ok(borrow) => Some(SharedReadGuard::Single(borrow)),
                 Err(_) => None,
             }
@@ -398,7 +438,7 @@ impl<T> SharedContainer<T> {
             not(feature = "wasm-sync")
         ))]
         {
-            match self.inner.write() {
+            match self.std_inner.write() {
                 Ok(guard) => Some(SharedWriteGuard::StdSync(guard)),
                 Err(_) => None,
             }
@@ -420,7 +460,7 @@ impl<T> SharedContainer<T> {
             )
         ))]
         {
-            match self.inner.try_borrow_mut() {
+            match self.wasm_inner.try_borrow_mut() {
                 Ok(borrow) => Some(SharedWriteGuard::Single(borrow)),
                 Err(_) => None,
             }
@@ -442,14 +482,14 @@ impl<T> SharedContainer<T> {
         ))]
         {
             WeakSharedContainer {
-                inner: Arc::downgrade(&self.inner),
+                std_inner: Arc::downgrade(&self.std_inner),
             }
         }
 
         #[cfg(feature = "tokio-sync")]
         {
             WeakSharedContainer {
-                inner: Arc::downgrade(&self.inner),
+                tokio_inner: Arc::downgrade(&self.tokio_inner),
             }
         }
 
@@ -463,7 +503,7 @@ impl<T> SharedContainer<T> {
         ))]
         {
             WeakSharedContainer {
-                inner: Rc::downgrade(&self.inner),
+                wasm_inner: Rc::downgrade(&self.wasm_inner),
             }
         }
     }
@@ -489,7 +529,7 @@ impl<T> SharedContainer<T> {
     #[cfg(feature = "tokio-sync")]
     #[cfg_attr(docsrs, doc(cfg(feature = "tokio-sync")))]
     pub async fn read_async(&self) -> SharedReadGuard<'_, T> {
-        let guard = self.inner.read().await;
+        let guard = self.tokio_inner.read().await;
         SharedReadGuard::TokioSync(guard)
     }
 
@@ -514,7 +554,7 @@ impl<T> SharedContainer<T> {
     #[cfg(feature = "tokio-sync")]
     #[cfg_attr(docsrs, doc(cfg(feature = "tokio-sync")))]
     pub async fn write_async(&self) -> SharedWriteGuard<'_, T> {
-        let guard = self.inner.write().await;
+        let guard = self.tokio_inner.write().await;
         SharedWriteGuard::TokioSync(guard)
     }
 }
@@ -529,8 +569,32 @@ impl<T> WeakSharedContainer<T> {
     /// * `Some(SharedContainer<T>)`: If the value still exists
     /// * `None`: If the value has been dropped
     pub fn upgrade(&self) -> Option<SharedContainer<T>> {
-        // Code is the same for both platforms, but types are different
-        self.inner.upgrade().map(|inner| SharedContainer { inner })
+        // Different implementations for different platforms
+        #[cfg(all(
+            feature = "std-sync",
+            not(feature = "tokio-sync"),
+            not(feature = "wasm-sync")
+        ))]
+        {
+            self.std_inner.upgrade().map(|inner| SharedContainer { std_inner: inner })
+        }
+
+        #[cfg(feature = "tokio-sync")]
+        {
+            self.tokio_inner.upgrade().map(|inner| SharedContainer { tokio_inner: inner })
+        }
+
+        #[cfg(any(
+            feature = "wasm-sync",
+            all(
+                target_arch = "wasm32",
+                not(feature = "std-sync"),
+                not(feature = "tokio-sync")
+            )
+        ))]
+        {
+            self.wasm_inner.upgrade().map(|inner| SharedContainer { wasm_inner: inner })
+        }
     }
 }
 /// A read-only guard for accessing data in a `SharedContainer`.
