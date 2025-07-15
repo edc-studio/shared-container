@@ -47,6 +47,36 @@
 
 use std::ops::{Deref, DerefMut};
 
+/// Custom attribute to warn when using synchronous methods with tokio-sync
+///
+/// This attribute will generate a warning during compilation when the `tokio-sync` feature
+/// is enabled, but won't mark the function as deprecated in the documentation.
+#[cfg(feature = "tokio-sync")]
+#[doc(hidden)]
+macro_rules! tokio_sync_warning {
+    ($msg:expr) => {
+        #[doc(hidden)]
+        #[allow(deprecated)]
+        struct __TokioSyncWarning;
+
+        impl __TokioSyncWarning {
+            #[deprecated(note = $msg)]
+            #[doc(hidden)]
+            fn __warn() {}
+        }
+
+        // Call the deprecated function to trigger the warning
+        let _ = __TokioSyncWarning::__warn();
+    };
+}
+
+// #[cfg(not(feature = "tokio-sync"))]
+// #[doc(hidden)]
+// #[allow(dead_code)]
+// macro_rules! tokio_sync_warning {
+//     ($msg:expr) => {};
+// }
+
 // Standard library synchronization primitives (default)
 #[cfg(all(
     feature = "std-sync",
@@ -277,13 +307,16 @@ impl<T: Clone> SharedContainer<T> {
     /// When using the `tokio-sync` feature, this method will try to acquire the lock
     /// in a blocking manner, which may not be ideal for async code. Consider using
     /// `get_cloned_async()` instead.
-    #[cfg_attr(feature = "tokio-sync", deprecated(
-        since = "0.2.5",
-        note = "This method uses blocking operations when using tokio-sync feature, which is not ideal for async code. Consider using get_cloned_async() instead."
-    ))]
+    #[cfg_attr(
+        feature = "tokio-sync",
+        doc = "WARNING: This method uses blocking operations when using tokio-sync feature, which is not ideal for async code. Consider using get_cloned_async() instead."
+    )]
     pub fn get_cloned(&self) -> Option<T> {
         #[cfg(feature = "tokio-sync")]
         {
+            tokio_sync_warning!(
+                "This method uses blocking operations when using tokio-sync feature, which is not ideal for async code. Consider using get_cloned_async() instead."
+            );
             // For tokio-sync, we need to block on the async read
             // This is not ideal for async code, but it allows the method to work
             // in both sync and async contexts
@@ -390,11 +423,21 @@ impl<T> SharedContainer<T> {
     /// # Note
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `read_async()` instead for async access.
-    #[cfg_attr(feature = "tokio-sync", deprecated(
-        since = "0.2.5",
-        note = "This method always returns None when using tokio-sync feature. Use read_async() instead."
-    ))]
+    #[cfg_attr(
+        feature = "tokio-sync",
+        doc = "WARNING: This method always returns None when using tokio-sync feature. Use read_async() instead."
+    )]
     pub fn read(&self) -> Option<SharedReadGuard<T>> {
+        #[cfg(feature = "tokio-sync")]
+        {
+            tokio_sync_warning!(
+                "This method always returns None when using tokio-sync feature. Use read_async() instead."
+            );
+            // Tokio's RwLock doesn't have a non-async read method, so we can't use it here
+            // Users should use read_async instead
+            return None;
+        }
+
         #[cfg(all(
             feature = "std-sync",
             not(feature = "tokio-sync"),
@@ -405,13 +448,6 @@ impl<T> SharedContainer<T> {
                 Ok(guard) => Some(SharedReadGuard::StdSync(guard)),
                 Err(_) => None,
             }
-        }
-
-        #[cfg(feature = "tokio-sync")]
-        {
-            // Tokio's RwLock doesn't have a non-async read method, so we can't use it here
-            // Users should use read_async instead
-            None
         }
 
         #[cfg(any(
@@ -439,11 +475,21 @@ impl<T> SharedContainer<T> {
     /// # Note
     /// When using the `tokio-sync` feature, this method will always return `None`.
     /// Use `write_async()` instead for async access.
-    #[cfg_attr(feature = "tokio-sync", deprecated(
-        since = "0.2.5",
-        note = "This method always returns None when using tokio-sync feature. Use write_async() instead."
-    ))]
+    #[cfg_attr(
+        feature = "tokio-sync",
+        doc = "WARNING: This method always returns None when using tokio-sync feature. Use write_async() instead."
+    )]
     pub fn write(&self) -> Option<SharedWriteGuard<T>> {
+        #[cfg(feature = "tokio-sync")]
+        {
+            tokio_sync_warning!(
+                "This method always returns None when using tokio-sync feature. Use write_async() instead."
+            );
+            // Tokio's RwLock doesn't have a non-async write method, so we can't use it here
+            // Users should use write_async instead
+            return None;
+        }
+
         #[cfg(all(
             feature = "std-sync",
             not(feature = "tokio-sync"),
@@ -454,13 +500,6 @@ impl<T> SharedContainer<T> {
                 Ok(guard) => Some(SharedWriteGuard::StdSync(guard)),
                 Err(_) => None,
             }
-        }
-
-        #[cfg(feature = "tokio-sync")]
-        {
-            // Tokio's RwLock doesn't have a non-async write method, so we can't use it here
-            // Users should use write_async instead
-            None
         }
 
         #[cfg(any(
@@ -588,12 +627,16 @@ impl<T> WeakSharedContainer<T> {
             not(feature = "wasm-sync")
         ))]
         {
-            self.std_inner.upgrade().map(|inner| SharedContainer { std_inner: inner })
+            self.std_inner
+                .upgrade()
+                .map(|inner| SharedContainer { std_inner: inner })
         }
 
         #[cfg(feature = "tokio-sync")]
         {
-            self.tokio_inner.upgrade().map(|inner| SharedContainer { tokio_inner: inner })
+            self.tokio_inner
+                .upgrade()
+                .map(|inner| SharedContainer { tokio_inner: inner })
         }
 
         #[cfg(any(
@@ -605,7 +648,9 @@ impl<T> WeakSharedContainer<T> {
             )
         ))]
         {
-            self.wasm_inner.upgrade().map(|inner| SharedContainer { wasm_inner: inner })
+            self.wasm_inner
+                .upgrade()
+                .map(|inner| SharedContainer { wasm_inner: inner })
         }
     }
 }
