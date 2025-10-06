@@ -1,6 +1,6 @@
 # Shared Container
 
-A unified abstraction for shared data access in both multi-threaded and single-threaded environments.
+Type-safe shared data access for multi-threaded, async, and single-threaded environments.
 
 [![Crates.io](https://img.shields.io/crates/v/shared-container.svg)](https://crates.io/crates/shared-container)
 [![Documentation](https://docs.rs/shared-container/badge.svg)](https://docs.rs/shared-container)
@@ -8,73 +8,95 @@ A unified abstraction for shared data access in both multi-threaded and single-t
 
 ## Overview
 
-`shared-container` provides a unified abstraction over different container types used for shared data access with
-interior mutability in different contexts. It abstracts over the differences between:
+`shared-container` provides type-safe abstractions for shared data access across different runtime environments:
 
-- Thread-safe `Arc<RwLock<T>>` used in multi-threaded environments
-- `Rc<RefCell<T>>` used in single-threaded environments like WebAssembly
+- **Synchronous multi-threaded**: `Arc<RwLock<T>>` on native platforms
+- **Single-threaded (WebAssembly)**: `Rc<RefCell<T>>`
+- **Asynchronous (Tokio)**: `Arc<tokio::sync::RwLock<T>>`
 
-This allows code using these containers to be written once but work efficiently in both contexts.
+**Version 3.0** introduces type-level separation between sync and async, eliminating runtime surprises and providing explicit error handling.
 
-## Features
+## Key Features
 
-- **Platform-aware implementation**: Automatically uses the most efficient implementation based on the target platform
-- **Unified API**: Same API for both multi-threaded and single-threaded environments
-- **Read/Write access**: Provides both read-only and read-write access to the contained data
-- **Weak references**: Supports weak references to prevent reference cycles
-- **Clone support**: Containers can be cloned to create multiple references to the same data
-- **Transparent access**: Uses Rust's deref mechanism for ergonomic access to the contained data
-- **Async support**: Optional support for async/await with Tokio
+- **Type-Level Safety**: Separate types for sync (`Shared<T>`) and async (`AsyncShared<T>`)
+- **Platform-Aware**: Automatically selects the right backend based on target
+- **Explicit Errors**: `Result<_, AccessError>` instead of `Option` or panics
+- **Zero Runtime Overhead**: No blocking operations or runtime initialization
+- **Weak References**: Break reference cycles with weak pointers
 
-## Usage
+## Quick Start
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-shared-container = "0.2"
+shared-container = "3.0"
 ```
 
-### Basic Example
+### Synchronous Usage
 
 ```rust
-use shared_container::SharedContainer;
+use shared_container::{Shared, SyncAccess};
 
-// Create a new container with a value
-let container = SharedContainer::new(42);
+// Create a new container
+let container = Shared::new(42);
 
 // Read access
-if let Some(guard) = container.read() {
-println ! ("Value: {}", * guard);
-}
+let guard = container.read().unwrap();
+assert_eq!(*guard, 42);
+drop(guard);
 
 // Write access
-if let Some( mut guard) = container.write() {
-* guard = 100;
-}
+let mut guard = container.write().unwrap();
+*guard = 100;
+drop(guard);
 
 // Clone the container (both point to the same data)
 let container2 = container.clone();
 
-// Changes through one container are visible through the other
-if let Some(guard) = container2.read() {
-assert_eq ! ( * guard, 100);
-}
+// Get a cloned value
+let value = container.get_cloned().unwrap();
+assert_eq!(value, 100);
+```
 
-// Create a weak reference
-let weak = container.downgrade();
+### Asynchronous Usage
 
-// Upgrade weak reference to strong reference
-if let Some(container3) = weak.upgrade() {
-// Use container3...
+Enable the `async` feature:
+
+```toml
+[dependencies]
+shared-container = { version = "3.0", features = ["async"] }
+```
+
+```rust
+use shared_container::{AsyncShared, AsyncAccess};
+
+async fn example() {
+    let container = AsyncShared::new(42);
+
+    // Async read access
+    let guard = container.read_async().await;
+    assert_eq!(*guard, 42);
+    drop(guard);
+
+    // Async write access
+    let mut guard = container.write_async().await;
+    *guard = 100;
+    drop(guard);
+
+    // Clone works the same
+    let container2 = container.clone();
+
+    // Get cloned value asynchronously
+    let value = container.get_cloned_async().await;
+    assert_eq!(value, 100);
 }
 ```
 
 ### Working with Custom Types
 
 ```rust
-use shared_container::SharedContainer;
-use std::fmt::Debug;
+use shared_container::{Shared, SyncAccess};
 
 #[derive(Debug, Clone)]
 struct User {
@@ -82,89 +104,167 @@ struct User {
     name: String,
 }
 
-let user = User {
-id: 1,
-name: "Alice".to_string(),
-};
-
-let container = SharedContainer::new(user);
-
-// Get a clone of the contained value
-if let Some(user_clone) = container.get_cloned() {
-println ! ("User: {:?}", user_clone);
-}
+let container = Shared::new(User {
+    id: 1,
+    name: "Alice".to_string(),
+});
 
 // Modify the user
-if let Some( mut guard) = container.write() {
+let mut guard = container.write().unwrap();
 guard.name = "Bob".to_string();
+drop(guard);
+
+// Get a snapshot
+let user_snapshot = container.get_cloned().unwrap();
+println!("User: {:?}", user_snapshot);
+```
+
+### Weak References
+
+```rust
+use shared_container::{Shared, SyncAccess};
+
+let container = Shared::new(42);
+let weak = container.downgrade();
+
+// Try to upgrade
+if let Some(strong) = weak.upgrade() {
+    let guard = strong.read().unwrap();
+    println!("Value: {}", *guard);
+} else {
+    println!("Value was dropped");
+}
+
+// After dropping all strong references
+drop(container);
+assert!(weak.upgrade().is_none());
+```
+
+## Error Handling
+
+The new API uses `AccessError` enum for explicit error handling:
+
+```rust
+use shared_container::{Shared, SyncAccess, AccessError};
+
+let container = Shared::new(42);
+
+match container.read() {
+    Ok(guard) => println!("Value: {}", *guard),
+    Err(AccessError::Poisoned) => println!("Lock was poisoned"),
+    Err(AccessError::BorrowConflict) => println!("Already borrowed"),
+    Err(AccessError::UnsupportedMode) => println!("Wrong container type"),
 }
 ```
 
-## Async Support with Tokio
+### Error Types
 
-This library provides optional support for async/await with Tokio through the `tokio-sync` feature:
+- **`Poisoned`**: Lock was poisoned by a panic (multi-threaded only)
+- **`BorrowConflict`**: Borrow rules violated (WebAssembly `RefCell` only)
+- **`UnsupportedMode`**: Operation not supported for this container type
 
-```toml
-[dependencies]
-shared-container = { version = "0.2", features = ["tokio-sync"] }
+## Universal Container (Advanced)
+
+For generic code that needs to work with both sync and async containers:
+
+```rust
+use shared_container::{SharedAny, Shared, SyncAccess, AccessError};
+
+fn process_container(container: SharedAny<i32>) {
+    match container.read() {
+        Ok(guard) => println!("Sync read: {}", *guard),
+        Err(AccessError::UnsupportedMode) => {
+            println!("This is an async container, use read_async() instead");
+        }
+        Err(e) => println!("Error: {}", e),
+    }
+}
+
+let sync_container: SharedAny<i32> = Shared::new(42).into();
+process_container(sync_container);
 ```
 
-When the `tokio-sync` feature is enabled, the library uses `Arc<tokio::sync::RwLock<T>>` internally, and provides async
-methods for read and write access:
+## Platform-Specific Behavior
 
+| Platform | Backend | Notes |
+|----------|---------|-------|
+| Native (multi-threaded) | `Arc<std::sync::RwLock<T>>` | Can be poisoned by panics |
+| WebAssembly | `Rc<RefCell<T>>` | Borrow checking at runtime |
+| Async (Tokio) | `Arc<tokio::sync::RwLock<T>>` | Requires `async` feature |
+
+## Feature Flags
+
+- **`async`**: Enables `AsyncShared<T>` and async trait methods (requires tokio)
+- **`std-sync`** (default): Legacy support for `SharedContainer` with std sync primitives
+- **`tokio-sync`**: Legacy support for `SharedContainer` with tokio primitives (deprecated)
+- **`wasm-sync`**: Legacy support for forcing WebAssembly backend
+
+## Migration from 2.x
+
+Version 3.0 introduces breaking changes with a clearer, type-safe API. The old `SharedContainer<T>` is deprecated but still available.
+
+### Migration Guide
+
+| Old (2.x) | New (3.0) |
+|-----------|-----------|
+| `SharedContainer::new(v)` (std-sync) | `Shared::new(v)` |
+| `SharedContainer::new(v)` (tokio-sync) | `AsyncShared::new(v)` with `async` feature |
+| `container.read()` → `Option<Guard>` | `container.read()` → `Result<Guard, AccessError>` |
+| `container.write()` → `Option<Guard>` | `container.write()` → `Result<Guard, AccessError>` |
+| `container.read_async().await` | `container.read_async().await` (same) |
+
+### Example Migration
+
+**Before (2.x):**
 ```rust
 use shared_container::SharedContainer;
 
-async fn example() {
-    let container = SharedContainer::new(42);
-
-    // Synchronous methods return None with tokio-sync
-    assert!(container.read().is_none());
-    assert!(container.write().is_none());
-
-    // Use async methods instead
-    let guard = container.read_async().await;
-    assert_eq!(*guard, 42);
-
-    // Async write access
-    {
-        let mut guard = container.write_async().await;
-        *guard = 100;
-    }
-
-    // Verify change
-    let guard = container.read_async().await;
-    assert_eq!(*guard, 100);
+let container = SharedContainer::new(42);
+if let Some(guard) = container.read() {
+    println!("{}", *guard);
 }
 ```
 
-## Platform-specific Behavior
+**After (3.0):**
+```rust
+use shared_container::{Shared, SyncAccess};
 
-- On native platforms, `SharedContainer<T>` uses `Arc<RwLock<T>>` internally
-- On WebAssembly (`wasm32` target), it uses `Rc<RefCell<T>>` internally
-- With the `tokio-sync` feature, it uses `Arc<tokio::sync::RwLock<T>>` for async support
-- The API remains the same, but the behavior differs slightly:
-    - On native platforms, read/write operations can fail if the lock is poisoned
-    - On WebAssembly, read/write operations can fail if there's already a borrow
-    - With `tokio-sync`, synchronous methods return `None` and you should use async methods instead
-
-## Testing WebAssembly Compatibility
-
-This library includes a feature flag to help test WebAssembly compatibility even on native platforms:
-
-```toml
-[dependencies]
-shared-container = { version = "0.2", features = ["force-wasm-impl"] }
+let container = Shared::new(42);
+match container.read() {
+    Ok(guard) => println!("{}", *guard),
+    Err(e) => eprintln!("Error: {}", e),
+}
 ```
 
-When the `force-wasm-impl` feature is enabled, the library will use the WebAssembly implementation (`Rc<RefCell<T>>`)
-even when compiling for native platforms. This allows you to test WebAssembly-specific behavior without actually
-compiling to WebAssembly.
+For async code with tokio:
 
-To run the WebAssembly-specific tests:
+**Before (2.x with `tokio-sync`):**
+```rust
+use shared_container::SharedContainer;
+
+let container = SharedContainer::new(42);
+let guard = container.read_async().await;
+```
+
+**After (3.0 with `async` feature):**
+```rust
+use shared_container::{AsyncShared, AsyncAccess};
+
+let container = AsyncShared::new(42);
+let guard = container.read_async().await;
+```
+
+## Testing
 
 ```bash
-cargo test --features force-wasm-impl
+# Run all tests with default features
+cargo test
+
+# Run tests with async support
+cargo test --features async
+
+# Run all tests
+cargo test --all-features
 ```
 
 ## License
