@@ -64,7 +64,7 @@
 //!
 //! The old `SharedContainer<T>` API is deprecated. Migrate to the new type-safe API:
 //!
-//! | Old (2.x) | New (3.0) |
+//! | Old (2.x) | New (0.3) |
 //! |-----------|-----------|
 //! | `SharedContainer::new(v)` (std-sync) | `Shared::new(v)` |
 //! | `SharedContainer::new(v)` (tokio-sync) | `AsyncShared::new(v)` |
@@ -142,7 +142,7 @@ use std::rc::{Rc, Weak as RcWeak};
 /// // use shared_container::SharedContainer;
 /// // let container = SharedContainer::new(42);
 ///
-/// // New (3.0)
+/// // New (0.3)
 /// use shared_container::{Shared, SyncAccess};
 /// let container = Shared::new(42);
 /// ```
@@ -155,13 +155,13 @@ use std::rc::{Rc, Weak as RcWeak};
 /// // use shared_container::SharedContainer;
 /// // let container = SharedContainer::new(42);
 ///
-/// // New (3.0)
+/// // New (0.3)
 /// use shared_container::{AsyncShared, AsyncAccess};
 /// let container = AsyncShared::new(42);
 /// # }
 /// ```
 #[deprecated(
-    since = "3.0.0",
+    since = "0.3.0",
     note = "Use `Shared<T>` for sync or `AsyncShared<T>` for async instead. See migration guide in docs."
 )]
 #[derive(Debug)]
@@ -210,7 +210,7 @@ unsafe impl<T: Send + Sync> Sync for SharedContainer<T> {}
 /// Weak references don't prevent the value from being dropped when no strong references
 /// remain. This helps break reference cycles that could cause memory leaks.
 #[deprecated(
-    since = "3.0.0",
+    since = "0.3.0",
     note = "Use `WeakShared<T>` for sync or `WeakAsyncShared<T>` for async instead."
 )]
 #[derive(Debug)]
@@ -860,7 +860,7 @@ impl<'a, T> DerefMut for SharedWriteGuard<'a, T> {
 }
 
 // ============================================================================
-// New 3.0 API - Type-level separation of sync and async
+// New 0.3 API - Type-level separation of sync and async
 // ============================================================================
 
 /// Errors that can occur when accessing shared containers.

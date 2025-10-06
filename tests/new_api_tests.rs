@@ -1,4 +1,4 @@
-/// Tests for the new 3.0 API with type-level separation of sync and async
+/// Tests for the new 0.3 API with type-level separation of sync and async
 #[cfg(test)]
 mod shared_sync_tests {
     use shared_container::{Shared, SyncAccess};

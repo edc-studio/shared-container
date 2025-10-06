@@ -14,7 +14,8 @@ Type-safe shared data access for multi-threaded, async, and single-threaded envi
 - **Single-threaded (WebAssembly)**: `Rc<RefCell<T>>`
 - **Asynchronous (Tokio)**: `Arc<tokio::sync::RwLock<T>>`
 
-**Version 3.0** introduces type-level separation between sync and async, eliminating runtime surprises and providing explicit error handling.
+**Version 0.3** introduces type-level separation between sync and async, eliminating runtime surprises and providing
+explicit error handling.
 
 ## Key Features
 
@@ -30,7 +31,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-shared-container = "3.0"
+shared-container = "0.3"
 ```
 
 ### Synchronous Usage
@@ -48,7 +49,7 @@ drop(guard);
 
 // Write access
 let mut guard = container.write().unwrap();
-*guard = 100;
+* guard = 100;
 drop(guard);
 
 // Clone the container (both point to the same data)
@@ -65,7 +66,7 @@ Enable the `async` feature:
 
 ```toml
 [dependencies]
-shared-container = { version = "3.0", features = ["async"] }
+shared-container = { version = "0.3.0", features = ["async"] }
 ```
 
 ```rust
@@ -105,8 +106,8 @@ struct User {
 }
 
 let container = Shared::new(User {
-    id: 1,
-    name: "Alice".to_string(),
+id: 1,
+name: "Alice".to_string(),
 });
 
 // Modify the user
@@ -129,10 +130,10 @@ let weak = container.downgrade();
 
 // Try to upgrade
 if let Some(strong) = weak.upgrade() {
-    let guard = strong.read().unwrap();
-    println!("Value: {}", *guard);
+let guard = strong.read().unwrap();
+println ! ("Value: {}", * guard);
 } else {
-    println!("Value was dropped");
+println ! ("Value was dropped");
 }
 
 // After dropping all strong references
@@ -150,10 +151,10 @@ use shared_container::{Shared, SyncAccess, AccessError};
 let container = Shared::new(42);
 
 match container.read() {
-    Ok(guard) => println!("Value: {}", *guard),
-    Err(AccessError::Poisoned) => println!("Lock was poisoned"),
-    Err(AccessError::BorrowConflict) => println!("Already borrowed"),
-    Err(AccessError::UnsupportedMode) => println!("Wrong container type"),
+Ok(guard) => println ! ("Value: {}", * guard),
+Err(AccessError::Poisoned) => println ! ("Lock was poisoned"),
+Err(AccessError::BorrowConflict) => println ! ("Already borrowed"),
+Err(AccessError::UnsupportedMode) => println ! ("Wrong container type"),
 }
 ```
 
@@ -186,11 +187,11 @@ process_container(sync_container);
 
 ## Platform-Specific Behavior
 
-| Platform | Backend | Notes |
-|----------|---------|-------|
-| Native (multi-threaded) | `Arc<std::sync::RwLock<T>>` | Can be poisoned by panics |
-| WebAssembly | `Rc<RefCell<T>>` | Borrow checking at runtime |
-| Async (Tokio) | `Arc<tokio::sync::RwLock<T>>` | Requires `async` feature |
+| Platform                | Backend                       | Notes                      |
+|-------------------------|-------------------------------|----------------------------|
+| Native (multi-threaded) | `Arc<std::sync::RwLock<T>>`   | Can be poisoned by panics  |
+| WebAssembly             | `Rc<RefCell<T>>`              | Borrow checking at runtime |
+| Async (Tokio)           | `Arc<tokio::sync::RwLock<T>>` | Requires `async` feature   |
 
 ## Feature Flags
 
@@ -201,44 +202,48 @@ process_container(sync_container);
 
 ## Migration from 2.x
 
-Version 3.0 introduces breaking changes with a clearer, type-safe API. The old `SharedContainer<T>` is deprecated but still available.
+Version 0.3 introduces breaking changes with a clearer, type-safe API. The old `SharedContainer<T>` is deprecated but
+still available.
 
 ### Migration Guide
 
-| Old (2.x) | New (3.0) |
-|-----------|-----------|
-| `SharedContainer::new(v)` (std-sync) | `Shared::new(v)` |
-| `SharedContainer::new(v)` (tokio-sync) | `AsyncShared::new(v)` with `async` feature |
-| `container.read()` → `Option<Guard>` | `container.read()` → `Result<Guard, AccessError>` |
-| `container.write()` → `Option<Guard>` | `container.write()` → `Result<Guard, AccessError>` |
-| `container.read_async().await` | `container.read_async().await` (same) |
+| Old (0.2.x)                            | New (0.3.x)                                        |
+|----------------------------------------|----------------------------------------------------|
+| `SharedContainer::new(v)` (std-sync)   | `Shared::new(v)`                                   |
+| `SharedContainer::new(v)` (tokio-sync) | `AsyncShared::new(v)` with `async` feature         |
+| `container.read()` → `Option<Guard>`   | `container.read()` → `Result<Guard, AccessError>`  |
+| `container.write()` → `Option<Guard>`  | `container.write()` → `Result<Guard, AccessError>` |
+| `container.read_async().await`         | `container.read_async().await` (same)              |
 
 ### Example Migration
 
-**Before (2.x):**
+**Before (0.2.x):**
+
 ```rust
 use shared_container::SharedContainer;
 
 let container = SharedContainer::new(42);
 if let Some(guard) = container.read() {
-    println!("{}", *guard);
+println ! ("{}", * guard);
 }
 ```
 
-**After (3.0):**
+**After (0.3.x):**
+
 ```rust
 use shared_container::{Shared, SyncAccess};
 
 let container = Shared::new(42);
 match container.read() {
-    Ok(guard) => println!("{}", *guard),
-    Err(e) => eprintln!("Error: {}", e),
+Ok(guard) => println ! ("{}", * guard),
+Err(e) => eprintln! ("Error: {}", e),
 }
 ```
 
 For async code with tokio:
 
-**Before (2.x with `tokio-sync`):**
+**Before (0.2.x with `tokio-sync`):**
+
 ```rust
 use shared_container::SharedContainer;
 
@@ -246,7 +251,8 @@ let container = SharedContainer::new(42);
 let guard = container.read_async().await;
 ```
 
-**After (3.0 with `async` feature):**
+**After (0.3.x with `async` feature):**
+
 ```rust
 use shared_container::{AsyncShared, AsyncAccess};
 

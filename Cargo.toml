@@ -1,6 +1,6 @@
 [package]
 name = "shared-container"
-version = "3.0.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["Every Day Coding Team"]
 description = "A unified abstraction for shared data access in both multi-threaded and single-threaded environments"
@@ -28,7 +28,7 @@ wasm-sync = []
 # Legacy feature for backward compatibility
 force-wasm-impl = ["wasm-sync"]
 
-# New 3.0 API
+# New 0.3 API
 async = ["tokio"]
 
 [dev-dependencies]
